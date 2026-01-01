@@ -1,0 +1,5 @@
+name "rlp"
+description "An implementation of Ethereum RLP serialization."
+authors "Hiroki Noda"
+copyright "Copyright © 2026, Hiroki Noda"
+license "BSL-1.0"

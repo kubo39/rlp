@@ -1,0 +1,16 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/rlp
+rlp.so
+rlp.dylib
+rlp.dll
+rlp.a
+rlp.lib
+rlp-test-*
+*.exe
+*.pdb
+*.o
+*.obj
+*.lst
