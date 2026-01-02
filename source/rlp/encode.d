@@ -128,7 +128,7 @@ pure @safe unittest
     assert(encode((ulong(0xFFCCB5DDFFEE1483))).toHexString == "88FFCCB5DDFFEE1483");
 }
 
-void encode(string value, ref ubyte[] buffer) nothrow pure @safe
+void encode(const(ubyte)[] value, ref ubyte[] buffer) nothrow pure @safe
 {
     if (value.length != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
     {
@@ -136,6 +136,39 @@ void encode(string value, ref ubyte[] buffer) nothrow pure @safe
         h.encodeHeader(buffer);
     }
     buffer ~= value;
+}
+
+size_t encodeLength(const(ubyte)[] value) @nogc nothrow pure @safe
+{
+    size_t len = value.length;
+    if (len != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
+    {
+        len += lengthOfPayloadLength(len);
+    }
+    return len;
+}
+
+@("rlp encode - bytes")
+@safe unittest
+{
+    import std.digest : toHexString;
+    import std.string : representation;
+
+    assert(encode("".representation.dup).toHexString == "80");
+    assert(encode([ubyte(0x7B)]).toHexString == "7B");
+    assert(encode([ubyte(0x80)]).toHexString == "8180");
+    assert(encode([ubyte(0xAB), ubyte(0XBA)]).toHexString == "82ABBA");
+}
+
+
+void encode(string value, ref ubyte[] buffer) nothrow pure @trusted
+{
+    encode(cast(ubyte[]) value, buffer);
+}
+
+size_t encodeLength(string value) @nogc nothrow pure @trusted
+{
+    return encodeLength(cast(ubyte[]) value);
 }
 
 @("rlp encode - string")
@@ -155,6 +188,19 @@ void encode(T : U[], U)(T values, ref ubyte[] buffer) nothrow pure @safe
         value.encode(buffer);
 }
 
+size_t encodeLength(T : U[], U)(T values) nothrow pure @safe
+{
+    auto payloadLen = rlpListHeader(values).payloadLength;
+    return payloadLen + lengthOfPayloadLength(payloadLen);
+}
+
+size_t lengthOfPayloadLength(size_t payloadLen) @nogc nothrow pure @safe
+{
+    return payloadLen < 56
+        ? 1
+        : 1 + size_t.sizeof - (payloadLen.llvm_ctlz(true) / 8);
+}
+
 Header rlpListHeader(T : U[], U)(T values) @nogc nothrow pure @safe
 {
     Header h = { isList: true, payloadLength: 0 };
@@ -169,6 +215,5 @@ pure @safe unittest
     import std.digest : toHexString;
 
     assert(encode(new ulong[0]).toHexString == "C0");
-    assert(encode([ubyte(0)]).toHexString == "C180");
     assert(encode([0xFFCCB5UL, 0xFFC0B5UL]).toHexString == "C883FFCCB583FFC0B5");
 }
