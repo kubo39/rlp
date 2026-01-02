@@ -69,9 +69,9 @@ if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
         import std.bitmanip : write;
         import std.system : Endian;
 
-        auto be = new ubyte[T.sizeof];
+        ubyte[T.sizeof] be;
         size_t index = 0;
-        be.write!(T, Endian.bigEndian)(value, &index);
+        be[].write!(T, Endian.bigEndian)(value, &index);
         size_t len = index - (value.llvm_ctlz(true) / 8);
         buffer ~= cast(ubyte) (rlp.EMPTY_STRING_CODE + len);
         buffer ~= be[(value.llvm_ctlz(true) / 8) .. index];
