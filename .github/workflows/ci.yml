@@ -8,20 +8,23 @@ on:
 
 jobs:
   lint:
+    name: Run `dub lint -q`
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dlang-community/setup-dlang@v2
-        with:
-          compiler: ldc
       - run: |
           dub lint -q
   test:
+    name: Run `dub test -q`
+    strategy:
+      matrix:
+        dc: [dmd-latest, ldc-latest]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dlang-community/setup-dlang@v2
         with:
-          compiler: ldc
+          compiler: ${{ matrix.dc }}
       - run: |
           dub test -q

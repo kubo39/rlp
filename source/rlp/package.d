@@ -7,3 +7,21 @@ public import rlp.header : Header;
 
 package enum ubyte EMPTY_STRING_CODE = 0x80;
 package enum ubyte EMPTY_LIST_CODE = 0xC0;
+
+
+package size_t ctlz(bool isZeroUndef = false, T)(T value) @nogc nothrow pure @safe
+    if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong) || is(T == size_t))
+{
+    version(LDC)
+    {
+        import ldc.intrinsics : llvm_ctlz;
+        return llvm_ctlz(value, isZeroUndef);
+    }
+    else
+    {
+        import core.bitop : bsr;
+        if (value == 0)
+            return T.sizeof * 8;
+        return (T.sizeof * 8 - 1) - bsr(value);
+    }
+}
