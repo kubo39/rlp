@@ -1,6 +1,7 @@
 module rlp.encode;
 
 private import ldc.intrinsics : llvm_ctlz;
+private import std.traits : Unqual;
 
 import rlp.header;
 
@@ -29,6 +30,15 @@ ubyte[] encode(T)(T value) nothrow pure @safe
     ubyte[] buffer;
     buffer.reserve(T.sizeof);
     value.encode(buffer);
+    return buffer;
+}
+
+/// Ditto.
+ubyte[] encode(bool isList = false)(ubyte[] value) nothrow pure @safe
+{
+    ubyte[] buffer;
+    buffer.reserve(value.length);
+    value.encode!isList(buffer);
     return buffer;
 }
 
@@ -128,24 +138,43 @@ pure @safe unittest
     assert(encode((ulong(0xFFCCB5DDFFEE1483))).toHexString == "88FFCCB5DDFFEE1483");
 }
 
-void encode(const(ubyte)[] value, ref ubyte[] buffer) nothrow pure @safe
+void encode(bool asList = false, T)(T[] value, ref ubyte[] buffer) nothrow pure @safe
+    if (is(Unqual!T == ubyte))
 {
-    if (value.length != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
+    static if (asList)
     {
-        Header h = { isList: false, payloadLength: value.length };
-        h.encodeHeader(buffer);
+        rlpListHeader(value).encodeHeader(buffer);
+        foreach (elem; value)
+            elem.encode(buffer);
     }
-    buffer ~= value;
+    else
+    {
+        if (value.length != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
+        {
+            Header h = { isList: false, payloadLength: value.length };
+            h.encodeHeader(buffer);
+        }
+        buffer ~= value;
+    }
 }
 
-size_t encodeLength(const(ubyte)[] value) @nogc nothrow pure @safe
+size_t encodeLength(bool asList = false, T)(T[] value) @nogc nothrow pure @safe
+    if (is(Unqual!T == ubyte))
 {
-    size_t len = value.length;
-    if (len != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
+    static if (asList)
     {
-        len += lengthOfPayloadLength(len);
+        auto payloadLen = rlpListHeader(value).payloadLength;
+        return payloadLen + lengthOfPayloadLength(payloadLen);
     }
-    return len;
+    else
+    {
+        size_t len = value.length;
+        if (len != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
+        {
+            len += lengthOfPayloadLength(len);
+        }
+        return len;
+    }
 }
 
 @("rlp encode - bytes")
@@ -163,12 +192,12 @@ size_t encodeLength(const(ubyte)[] value) @nogc nothrow pure @safe
 
 void encode(string value, ref ubyte[] buffer) nothrow pure @trusted
 {
-    encode(cast(ubyte[]) value, buffer);
+    encode!false(cast(ubyte[]) value, buffer);
 }
 
 size_t encodeLength(string value) @nogc nothrow pure @trusted
 {
-    return encodeLength(cast(ubyte[]) value);
+    return encodeLength!false(cast(ubyte[]) value);
 }
 
 @("rlp encode - string")
@@ -182,6 +211,7 @@ pure @safe unittest
 }
 
 void encode(T : U[], U)(T values, ref ubyte[] buffer) nothrow pure @safe
+    if (!is(Unqual!U == ubyte))
 {
     rlpListHeader(values).encodeHeader(buffer);
     foreach (value; values)
@@ -189,6 +219,7 @@ void encode(T : U[], U)(T values, ref ubyte[] buffer) nothrow pure @safe
 }
 
 size_t encodeLength(T : U[], U)(T values) nothrow pure @safe
+    if (!is(Unqual!U == ubyte))
 {
     auto payloadLen = rlpListHeader(values).payloadLength;
     return payloadLen + lengthOfPayloadLength(payloadLen);
@@ -215,6 +246,7 @@ pure @safe unittest
     import std.digest : toHexString;
 
     assert(encode(new ulong[0]).toHexString == "C0");
+    assert(encode!true([ubyte(0x0)]).toHexString == "C180");
     assert(encode([0xFFCCB5UL, 0xFFC0B5UL]).toHexString == "C883FFCCB583FFC0B5");
 }
 
