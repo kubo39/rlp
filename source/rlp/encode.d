@@ -26,7 +26,7 @@ void encode(bool value, ref ubyte[] buffer) nothrow pure @safe
     buffer ~= value ? 1 : rlp.EMPTY_STRING_CODE;
 }
 
-size_t encodeLength(bool value) @nogc nothrow pure @safe
+size_t encodeLength(bool _) @nogc nothrow pure @safe
 {
     return 1;
 }

@@ -1,10 +1,15 @@
 module rlp.header;
 
+/// RLP Header.
 struct Header
 {
+    /// whether list or not.
     bool isList;
+    /// Length of the payload in bytes.
     size_t payloadLength;
 }
+
+package:
 
 void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
 {
