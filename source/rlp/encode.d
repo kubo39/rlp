@@ -1,8 +1,8 @@
 module rlp.encode;
 
-private import ldc.intrinsics : llvm_ctlz;
 private import std.traits : Unqual;
 
+private import rlp : ctlz;
 import rlp.header;
 
 /// Detect whether a type `T` can be encoded via RLP.
@@ -82,9 +82,9 @@ if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
         ubyte[T.sizeof] be;
         size_t index = 0;
         be[].write!(T, Endian.bigEndian)(value, &index);
-        size_t len = index - (value.llvm_ctlz(true) / 8);
+        size_t len = index - (value.ctlz!true() / 8);
         buffer ~= cast(ubyte) (rlp.EMPTY_STRING_CODE + len);
-        buffer ~= be[(value.llvm_ctlz(true) / 8) .. index];
+        buffer ~= be[(value.ctlz!true() / 8) .. index];
     }
 }
 
@@ -97,7 +97,7 @@ if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
     }
     else
     {
-        return 1 + T.sizeof - (value.llvm_ctlz(true) / 8);
+        return 1 + T.sizeof - (value.ctlz!true() / 8);
     }
 }
 
@@ -229,7 +229,7 @@ size_t lengthOfPayloadLength(size_t payloadLen) @nogc nothrow pure @safe
 {
     return payloadLen < 56
         ? 1
-        : 1 + size_t.sizeof - (payloadLen.llvm_ctlz(true) / 8);
+        : 1 + size_t.sizeof - (payloadLen.ctlz!true() / 8);
 }
 
 Header rlpListHeader(T : U[], U)(T values) @nogc nothrow pure @safe
