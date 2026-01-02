@@ -1,5 +1,11 @@
 module rlp.header;
 
+private import std.bitmanip : read, write;
+private import std.exception : enforce;
+private import std.range : empty, popFrontExactly;
+
+import rlp.exception;
+
 /// RLP Header.
 struct Header
 {
@@ -20,7 +26,6 @@ void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
     }
     else
     {
-        import std.bitmanip : write;
         import std.system : Endian;
         import ldc.intrinsics;
 
@@ -32,4 +37,54 @@ void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
         buffer ~= cast(ubyte) (code + len);
         buffer ~= be[(header.payloadLength.llvm_ctlz(true) / 8) .. index];
     }
+}
+
+struct DecodedHeader
+{
+    size_t offset;
+    size_t payloadLen;
+    bool isList;
+}
+
+void decodeHeader(ref DecodedHeader header, ref const(ubyte)[] input) @trusted
+{
+    enforce!InputIsNull(input.length > 0, "RLP header size is zero.");
+
+    const prefix = input[0];
+    switch (prefix)
+    {
+    case 0: .. case 0x7F:
+        header.payloadLen = 1;
+        break;
+    case 0x80: .. case 0xB7:
+        input.read!ubyte;
+        header.offset = 1;
+        header.payloadLen = prefix - 0x80;
+        break;
+    case 0xB8: .. case 0xBF:
+    case 0xF8: .. case 0xFF:
+        input.read!ubyte;
+        header.isList = prefix >= 0xF8;
+        const code = header.isList ? 0xF7 : 0xB7;
+        const lenOfPayloadLen = prefix - code;
+        input.popFrontExactly(lenOfPayloadLen);
+
+        auto buffer = new ubyte[size_t.sizeof];
+        // copy payloadLen to buffer.
+        buffer[($ - lenOfPayloadLen) .. $] = input[0 .. lenOfPayloadLen];
+        header.payloadLen = cast(size_t) buffer.read!ulong;
+        assert(buffer.empty);
+        header.offset = 1 + lenOfPayloadLen;
+        break;
+    case 0xC0: .. case 0xF7:
+        input.read!ubyte;
+        header.offset = 1;
+        header.isList = true;
+        header.payloadLen = prefix - 0xC0;
+        break;
+    default:
+        assert(false, "unreachable");
+    }
+
+    enforce!InputTooShort(input.length >= header.payloadLen, "Too short payload was given.");
 }
