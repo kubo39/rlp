@@ -217,3 +217,21 @@ pure @safe unittest
     assert(encode(new ulong[0]).toHexString == "C0");
     assert(encode([0xFFCCB5UL, 0xFFC0B5UL]).toHexString == "C883FFCCB583FFC0B5");
 }
+
+// tests from deth.
+pure @trusted unittest
+{
+    import std.digest : toHexString;
+
+    assert(encode([
+        "cat", "dog", "dogg\0y", "man"
+    ]).toHexString == "D38363617483646F6786646F67670079836D616E");
+    assert(encode([
+            "ccatcatcatcatcatcatcatcatcatcatcatcatcatcatcatcatcatcatcatcatcatcatat",
+            "dog"
+        ]).toHexString == "F84BB845636361746361746361746361746361746361746361746361746361746"
+        ~ "36174636174636174636174636174636174636174636174636174636174636174636174636174617483646F67");
+    assert(encode(["cat", ""]).toHexString == "C58363617480");
+    auto d = cast(ubyte[][])[[1], [2, 3, 4], [123, 255]];
+    assert(encode(d).toHexString == "C80183020304827BFF");    
+}
