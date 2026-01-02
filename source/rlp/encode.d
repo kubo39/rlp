@@ -4,10 +4,23 @@ private import ldc.intrinsics : llvm_ctlz;
 
 import rlp.header;
 
-enum isRlpEncodable(T) =
-    is(T == bool) || is(T == ubyte) || is(T == ushort) ||
-    is(T == uint) || is(T == ulong);
-enum isRlpEncodable(T : U[], U) = isRlpEncodable!U;
+/// Detect whether a type `T` can be encoded via RLP.
+template isRlpEncodable(T)
+{
+    static if (is(T == bool) || is(T == ubyte) || is(T == ushort) ||
+        is(T == uint) || is(T == ulong) || is(T == string))
+    {
+        enum isRlpEncodable = true;
+    }
+    else static if (is(T : U[], U))
+    {
+        enum isRlpEncodable = isRlpEncodable!U;
+    }
+    else
+    {
+        enum isRlpEncodable = false;
+    }
+}
 
 /// Encode a value.
 ubyte[] encode(T)(T value) nothrow pure @safe
@@ -113,6 +126,26 @@ pure @safe unittest
     assert(encode((ulong(0xFFCCB5DDFFEE))).toHexString == "86FFCCB5DDFFEE");
     assert(encode((ulong(0xFFCCB5DDFFEE14))).toHexString == "87FFCCB5DDFFEE14");
     assert(encode((ulong(0xFFCCB5DDFFEE1483))).toHexString == "88FFCCB5DDFFEE1483");
+}
+
+void encode(string value, ref ubyte[] buffer) nothrow pure @safe
+{
+    if (value.length != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
+    {
+        Header h = { isList: false, payloadLength: value.length };
+        h.encodeHeader(buffer);
+    }
+    buffer ~= value;
+}
+
+@("rlp encode - string")
+pure @safe unittest
+{
+    import std.digest : toHexString;
+
+    assert(encode("").toHexString == "80");
+    assert(encode("{").toHexString == "7B");
+    assert(encode("test str").toHexString == "887465737420737472");
 }
 
 void encode(T : U[], U)(T values, ref ubyte[] buffer) nothrow pure @safe
