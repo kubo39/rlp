@@ -1,15 +1,20 @@
 module rlp.encode;
 
+import std.bigint : BigInt;
+private import std.exception : enforce;
 private import std.traits : Unqual;
 
 private import rlp : ctlz;
+import rlp.exception : NegativeBigIntException;
 import rlp.header;
 
 /// Detect whether a type `T` can be encoded via RLP.
 template isRlpEncodable(T)
 {
-    static if (is(T == bool) || is(T == ubyte) || is(T == ushort) ||
-        is(T == uint) || is(T == ulong) || is(T == string))
+    static if (
+        is(T == bool) || is(T == ubyte) || is(T == ushort) || is(T == uint) ||
+        is(T == ulong) || is(T == string) || is(T == BigInt)
+    )
     {
         enum isRlpEncodable = true;
     }
@@ -24,7 +29,7 @@ template isRlpEncodable(T)
 }
 
 /// Encode a value.
-ubyte[] encode(T)(T value) nothrow pure @safe
+ubyte[] encode(T)(T value) pure @safe
     if (isRlpEncodable!T)
 {
     ubyte[] buffer;
@@ -34,7 +39,7 @@ ubyte[] encode(T)(T value) nothrow pure @safe
 }
 
 /// Ditto.
-ubyte[] encode(bool isList = false)(ubyte[] value) nothrow pure @safe
+ubyte[] encode(bool isList = false)(ubyte[] value) pure @safe
 {
     ubyte[] buffer;
     buffer.reserve(value.length);
@@ -136,6 +141,73 @@ pure @safe unittest
     assert(encode((ulong(0xFFCCB5DDFFEE))).toHexString == "86FFCCB5DDFFEE");
     assert(encode((ulong(0xFFCCB5DDFFEE14))).toHexString == "87FFCCB5DDFFEE14");
     assert(encode((ulong(0xFFCCB5DDFFEE1483))).toHexString == "88FFCCB5DDFFEE1483");
+}
+
+void encode(BigInt value, ref ubyte[] buffer) pure @safe
+{
+    enforce!NegativeBigIntException(value >= 0, "value must be larger than zero.");
+    if (value.ulongLength() == 1)
+    {
+        encode!ulong(cast(ulong) value, buffer);
+        return;
+    }
+    // encode as bytes.
+    ulong d = value.getDigit(value.ulongLength() - 1);
+    immutable idx = ulong.sizeof - (d.ctlz!true() / 8);
+    immutable payloadLen = idx + (value.ulongLength() - 1) * 8;
+    Header h = { isList: false, payloadLen: payloadLen };
+    h.encodeHeader(buffer);
+    // first digit.
+    buffer ~= [
+        ubyte((d >> 56) & 0xFF),
+        ubyte((d >> 48) & 0xFF),
+        ubyte((d >> 40) & 0xFF),
+        ubyte((d >> 32) & 0xFF),
+        ubyte((d >> 24) & 0xFF),
+        ubyte((d >> 16) & 0xFF),
+        ubyte((d >>  8) & 0xFF),
+        ubyte( d        & 0xFF)
+    ][($ - idx) .. $];
+    // rest.
+    foreach_reverse (i; 0 .. value.ulongLength() - 1)
+    {
+        d = value.getDigit(i);
+        buffer ~= cast(ubyte[]) [
+            (d >> 56) & 0xFF, (d >> 48) & 0xFF, (d >> 40) & 0xFF, (d >> 32) & 0xFF,
+            (d >> 24) & 0xFF, (d >> 16) & 0xFF, (d >>  8) & 0xFF,  d        & 0xFF
+        ];
+    }
+}
+
+@("rlp encode - BigInt")
+pure @safe unittest
+{
+    import std.digest : toHexString;
+
+    assert(encode(BigInt("0")).toHexString == "80");
+    assert(encode(BigInt("1")).toHexString == "01");
+    assert(encode(BigInt("0x7F")).toHexString == "7F");
+    assert(encode(BigInt("0x80")).toHexString == "8180");
+    assert(encode(BigInt("0x400")).toHexString == "820400");
+    assert(encode(BigInt("0xFFCCB5")).toHexString == "83FFCCB5");
+    assert(encode(BigInt("0xFFCCB5DD")).toHexString == "84FFCCB5DD");
+    assert(encode(BigInt("0xFFCCB5DDFF")).toHexString == "85FFCCB5DDFF");
+    assert(encode(BigInt("0xFFCCB5DDFFEE")).toHexString == "86FFCCB5DDFFEE");
+    assert(encode(BigInt("0xFFCCB5DDFFEE14")).toHexString == "87FFCCB5DDFFEE14");
+    assert(encode(BigInt("0xFFCCB5DDFFEE1483")).toHexString == "88FFCCB5DDFFEE1483");
+
+    assert(
+        encode(BigInt("0x102030405060708090A0B0C0D0E0F2"))
+            .toHexString == "8F102030405060708090A0B0C0D0E0F2"
+    );
+    assert(
+		encode(BigInt("0x100020003000400050006000700080009000A000B000C000D000E01"))
+            .toHexString == "9C0100020003000400050006000700080009000A000B000C000D000E01"
+    );
+    assert(
+		encode(BigInt("0x10000000000000000000000000000000000000000000000000000000000000000"))
+            .toHexString == "A1010000000000000000000000000000000000000000000000000000000000000000"
+    );
 }
 
 void encode(bool asList = false, T)(T[] value, ref ubyte[] buffer) nothrow pure @safe
