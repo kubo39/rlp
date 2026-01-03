@@ -15,12 +15,6 @@ class InputTooShort : Exception
 }
 
 ///
-class InputTooLong : Exception
-{
-    mixin basicExceptionCtors;
-}
-
-///
 class InvalidInput : Exception
 {
     mixin basicExceptionCtors;
