@@ -13,17 +13,17 @@ struct Header
     /// whether list or not.
     bool isList;
     /// Length of the payload in bytes.
-    size_t payloadLength;
+    size_t payloadLen;
 }
 
 package:
 
 void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
 {
-    if (header.payloadLength < 56)
+    if (header.payloadLen < 56)
     {
         const code = header.isList ? rlp.EMPTY_LIST_CODE : rlp.EMPTY_STRING_CODE;
-        buffer ~= cast(ubyte) (code + header.payloadLength);
+        buffer ~= cast(ubyte) (code + header.payloadLen);
     }
     else
     {
@@ -31,22 +31,15 @@ void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
 
         auto be = new ubyte[size_t.sizeof];
         size_t index = 0;
-        be.write!(size_t, Endian.bigEndian)(header.payloadLength, &index);
-        size_t len = index - (header.payloadLength.ctlz!true() / 8);
+        be.write!(size_t, Endian.bigEndian)(header.payloadLen, &index);
+        size_t len = index - (header.payloadLen.ctlz!true() / 8);
         const code = header.isList ? 0xF7 : 0xB7;
         buffer ~= cast(ubyte) (code + len);
-        buffer ~= be[(header.payloadLength.ctlz!true() / 8) .. index];
+        buffer ~= be[(header.payloadLen.ctlz!true() / 8) .. index];
     }
 }
 
-struct DecodedHeader
-{
-    size_t offset;
-    size_t payloadLen;
-    bool isList;
-}
-
-void decodeHeader(ref DecodedHeader header, ref const(ubyte)[] input) @trusted
+void decodeHeader(ref Header header, ref const(ubyte)[] input) @trusted
 {
     enforce!InputIsNull(input.length > 0, "RLP header size is zero.");
 
@@ -58,7 +51,6 @@ void decodeHeader(ref DecodedHeader header, ref const(ubyte)[] input) @trusted
         break;
     case 0x80: .. case 0xB7:
         input.read!ubyte;
-        header.offset = 1;
         header.payloadLen = prefix - 0x80;
         break;
     case 0xB8: .. case 0xBF:
@@ -71,14 +63,13 @@ void decodeHeader(ref DecodedHeader header, ref const(ubyte)[] input) @trusted
 
         auto buffer = new ubyte[size_t.sizeof];
         // copy payloadLen to buffer.
+        assert(lenOfPayloadLen <= input.length);
         buffer[($ - lenOfPayloadLen) .. $] = input[0 .. lenOfPayloadLen];
         header.payloadLen = cast(size_t) buffer.read!ulong;
         assert(buffer.empty);
-        header.offset = 1 + lenOfPayloadLen;
         break;
     case 0xC0: .. case 0xF7:
         input.read!ubyte;
-        header.offset = 1;
         header.isList = true;
         header.payloadLen = prefix - 0xC0;
         break;

@@ -151,7 +151,7 @@ void encode(bool asList = false, T)(T[] value, ref ubyte[] buffer) nothrow pure 
     {
         if (value.length != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
         {
-            Header h = { isList: false, payloadLength: value.length };
+            Header h = { isList: false, payloadLen: value.length };
             h.encodeHeader(buffer);
         }
         buffer ~= value;
@@ -221,7 +221,7 @@ void encode(T : U[], U)(T values, ref ubyte[] buffer) nothrow pure @safe
 size_t encodeLength(T : U[], U)(T values) nothrow pure @safe
     if (!is(Unqual!U == ubyte))
 {
-    auto payloadLen = rlpListHeader(values).payloadLength;
+    auto payloadLen = rlpListHeader(values).payloadLen;
     return payloadLen + lengthOfPayloadLength(payloadLen);
 }
 
@@ -234,9 +234,9 @@ size_t lengthOfPayloadLength(size_t payloadLen) @nogc nothrow pure @safe
 
 Header rlpListHeader(T : U[], U)(T values) @nogc nothrow pure @safe
 {
-    Header h = { isList: true, payloadLength: 0 };
+    Header h = { isList: true, payloadLen: 0 };
     foreach (v; values)
-        h.payloadLength += v.encodeLength;
+        h.payloadLen += v.encodeLength;
     return h;
 }
 

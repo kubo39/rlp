@@ -2,18 +2,17 @@ module rlp.decode;
 
 private import std.bitmanip : read;
 private import std.exception : enforce;
-private import std.range : empty;
+private import std.range : empty, popFrontExactly;
 
 private import rlp.header;
 private import rlp.exception;
 
 /// Decode a value.
-T decode(T)(const(ubyte)[] input) @trusted
+T decode(T)(ref const(ubyte)[] input) @trusted
 {
     static if (is(T == bool))
     {
         enforce!InputTooShort(input.length >= 1, "A bool must be one byte.");
-        enforce!InputTooLong(input.length < 2, "A bool must be one byte.");
         switch (input[0])
         {
         case 0x80:
@@ -26,9 +25,8 @@ T decode(T)(const(ubyte)[] input) @trusted
     }
     else static if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
     {
-        DecodedHeader header = {
+        Header header = {
             isList: false,
-            offset: 0,
             payloadLen: 0,
         };
         decodeHeader(header, input);
@@ -42,13 +40,13 @@ T decode(T)(const(ubyte)[] input) @trusted
         buffer[($ - header.payloadLen) .. $] = input[0 .. header.payloadLen];
         T n = buffer.read!T;
         assert(buffer.empty);
+        input.popFrontExactly(header.payloadLen);
         return n;
     }
     else static if (is(T == string))
     {
-        DecodedHeader header = {
+        Header header = {
             isList: false,
-            offset: 0,
             payloadLen: 0,
         };
         decodeHeader(header, input);
@@ -57,9 +55,8 @@ T decode(T)(const(ubyte)[] input) @trusted
     }
     else static if (is(T == ubyte[]))
     {
-        DecodedHeader header = {
+        Header header = {
             isList: true,
-            offset: 0,
             payloadLen: 0,
         };
         decodeHeader(header, input);
@@ -70,9 +67,8 @@ T decode(T)(const(ubyte)[] input) @trusted
     {
         static if (is(U == ushort) || is(U == uint) || is(U == ulong) || is(U == string))
         {
-            DecodedHeader header = {
+            Header header = {
                 isList: true,
-                offset: 0,
                 payloadLen: 0,
             };
 
@@ -84,21 +80,10 @@ T decode(T)(const(ubyte)[] input) @trusted
 
             T answer;
 
-            size_t offset = input.length - header.payloadLen;
-            while (offset < input.length)
+            while (input.length)
             {
-                // FIXME(kubo39): decode header twice..
-                const(ubyte)[] tmp = input[offset .. $];
-                DecodedHeader elemHeader = {
-                    isList: false,
-                    offset: 0,
-                    payloadLen: 0,
-                };
-                decodeHeader(elemHeader, tmp);
-                const newOffset = offset + elemHeader.offset + elemHeader.payloadLen;
-                U elem = decode!U(input[offset .. newOffset]);
+                U elem = decode!U(input);
                 answer ~= elem;
-                offset = newOffset;
             }
             return answer;
         }
@@ -122,7 +107,7 @@ version(unittest)
     foreach (tc; [
         TestCase!bool([0x80], false),
         TestCase!bool([0x01], true),
-        TestCase!bool([0x80, 0x80], false, true)
+        TestCase!bool([0x09], false, true)
     ])
     {
         if (!tc.isError)
