@@ -7,8 +7,27 @@ private import std.range : empty, popFrontExactly;
 private import rlp.header;
 private import rlp.exception;
 
+/// Detect whether a type `T` can be decoded from RLP.
+template isRlpDecodable(T)
+{
+    static if (is(T == bool) || is(T == ubyte) || is(T == ushort) ||
+        is(T == uint) || is(T == ulong) || is(T == string))
+    {
+        enum isRlpDecodable = true;
+    }
+    else static if (is(T : U[], U))
+    {
+        enum isRlpDecodable = isRlpDecodable!U;
+    }
+    else
+    {
+        enum isRlpDecodable = false;
+    }
+}
+
 /// Decode a value.
 T decode(T)(ref const(ubyte)[] input) @trusted
+    if (isRlpDecodable!T)
 {
     static if (is(T == bool))
     {
