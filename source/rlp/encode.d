@@ -179,6 +179,17 @@ void encode(BigInt value, ref ubyte[] buffer) pure @safe
     }
 }
 
+size_t encodeLength(BigInt value) pure @safe
+{
+    enforce!NegativeBigIntException(value >= 0, "value must be larger than zero.");
+    if (value.ulongLength == 1)
+        return encodeLength(cast(ulong) value);
+    // FIXME(kubo39): optimize.
+    ubyte[] buffer;
+    encode(value, buffer);
+    return buffer.length;
+}
+
 @("rlp encode - BigInt")
 pure @safe unittest
 {
@@ -230,7 +241,7 @@ void encode(bool asList = false, T)(T[] value, ref ubyte[] buffer) nothrow pure 
     }
 }
 
-size_t encodeLength(bool asList = false, T)(T[] value) @nogc nothrow pure @safe
+size_t encodeLength(bool asList = false, T)(T[] value) @nogc pure @safe
     if (is(Unqual!T == ubyte))
 {
     static if (asList)
@@ -267,7 +278,7 @@ void encode(string value, ref ubyte[] buffer) nothrow pure @trusted
     encode!false(cast(ubyte[]) value, buffer);
 }
 
-size_t encodeLength(string value) @nogc nothrow pure @trusted
+size_t encodeLength(string value) @nogc pure @trusted
 {
     return encodeLength!false(cast(ubyte[]) value);
 }
@@ -282,7 +293,7 @@ pure @safe unittest
     assert(encode("test str").toHexString == "887465737420737472");
 }
 
-void encode(T : U[], U)(T values, ref ubyte[] buffer) nothrow pure @safe
+void encode(T : U[], U)(T values, ref ubyte[] buffer) pure @safe
     if (!is(Unqual!U == ubyte))
 {
     rlpListHeader(values).encodeHeader(buffer);
@@ -290,25 +301,25 @@ void encode(T : U[], U)(T values, ref ubyte[] buffer) nothrow pure @safe
         value.encode(buffer);
 }
 
-size_t encodeLength(T : U[], U)(T values) nothrow pure @safe
+size_t encodeLength(T : U[], U)(T values) pure @safe
     if (!is(Unqual!U == ubyte))
 {
     auto payloadLen = rlpListHeader(values).payloadLen;
     return payloadLen + lengthOfPayloadLength(payloadLen);
 }
 
-size_t lengthOfPayloadLength(size_t payloadLen) @nogc nothrow pure @safe
+size_t lengthOfPayloadLength(size_t payloadLen) @nogc pure @safe
 {
     return payloadLen < 56
         ? 1
         : 1 + size_t.sizeof - (payloadLen.ctlz!true() / 8);
 }
 
-Header rlpListHeader(T : U[], U)(T values) @nogc nothrow pure @safe
+Header rlpListHeader(T : U[], U)(T values) pure @safe
 {
     Header h = { isList: true, payloadLen: 0 };
     foreach (v; values)
-        h.payloadLen += v.encodeLength;
+        h.payloadLen += v.encodeLength();
     return h;
 }
 
@@ -319,6 +330,7 @@ pure @safe unittest
 
     assert(encode(new ulong[0]).toHexString == "C0");
     assert(encode!true([ubyte(0x0)]).toHexString == "C180");
+    assert(encode([BigInt("0")]).toHexString == "C180");
     assert(encode([0xFFCCB5UL, 0xFFC0B5UL]).toHexString == "C883FFCCB583FFC0B5");
 }
 
