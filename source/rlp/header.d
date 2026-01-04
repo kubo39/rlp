@@ -29,9 +29,9 @@ void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
     {
         import std.system : Endian;
 
-        auto be = new ubyte[size_t.sizeof];
+        ubyte[size_t.sizeof] be;
         size_t index = 0;
-        be.write!(size_t, Endian.bigEndian)(header.payloadLen, &index);
+        be[].write!(size_t, Endian.bigEndian)(header.payloadLen, &index);
         size_t len = index - (header.payloadLen.ctlz!true() / 8);
         const code = header.isList ? 0xF7 : 0xB7;
         buffer ~= cast(ubyte) (code + len);
