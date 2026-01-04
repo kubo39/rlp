@@ -3,6 +3,7 @@ module rlp.decode;
 private import std.bitmanip : read;
 private import std.exception : enforce;
 private import std.range : empty, popFrontExactly;
+private import std.system : Endian;
 
 private import rlp.header;
 private import rlp.exception;
@@ -57,7 +58,7 @@ T decode(T)(ref const(ubyte)[] input) @safe
 
         auto buffer = new ubyte[T.sizeof];
         buffer[($ - header.payloadLen) .. $] = input[0 .. header.payloadLen];
-        T n = buffer.read!T;
+        T n = buffer.read!(T, Endian.bigEndian);
         assert(buffer.empty);
         input.popFrontExactly(header.payloadLen);
         return n;
