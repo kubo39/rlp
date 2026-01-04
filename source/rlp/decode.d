@@ -2,7 +2,7 @@ module rlp.decode;
 
 private import std.bitmanip : read;
 private import std.exception : enforce;
-private import std.range : empty, popFrontExactly;
+private import std.range : empty, popFront, popFrontExactly;
 private import std.system : Endian;
 
 private import rlp.header;
@@ -36,8 +36,10 @@ T decode(T)(ref const(ubyte)[] input) @safe
         switch (input[0])
         {
         case 0x80:
+            input.popFront;
             return false;
         case 0x1:
+            input.popFront;
             return true;
         default:
             throw new InvalidInput("An invalid bool value.");
@@ -72,7 +74,9 @@ T decode(T)(ref const(ubyte)[] input) @safe
         };
         decodeHeader(header, input);
         enforce!UnexpectedList(!header.isList, "Expected string, got a list instead.");
-        return input[0 ..  header.payloadLen].assumeUTF();
+        string ret = input[0 ..  header.payloadLen].assumeUTF();
+        input.popFrontExactly(header.payloadLen);
+        return ret;
     }
     else static if (is(T == ubyte[]))
     {
@@ -82,7 +86,9 @@ T decode(T)(ref const(ubyte)[] input) @safe
         };
         decodeHeader(header, input);
         assert(header.isList);
-        return input[0 .. header.payloadLen].dup;
+        auto ret = input[0 .. header.payloadLen].dup;
+        input.popFrontExactly(header.payloadLen);
+        return ret;
     }
     else static if (is(T U == U[]))
     {
