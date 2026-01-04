@@ -84,26 +84,21 @@ if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
         import std.bitmanip : write;
         import std.system : Endian;
 
-        ubyte[T.sizeof] be;
-        size_t index = 0;
-        be[].write!(T, Endian.bigEndian)(value, &index);
-        size_t len = index - (value.ctlz!true() / 8);
+        size_t len = T.sizeof - (value.ctlz!true() / 8);
         buffer ~= cast(ubyte) (rlp.EMPTY_STRING_CODE + len);
-        buffer ~= be[(value.ctlz!true() / 8) .. index];
+
+        ubyte[T.sizeof] be;
+        be[].write!(T, Endian.bigEndian)(value, 0);
+        buffer ~= be[($ - len) .. $];
     }
 }
 
 size_t encodeLength(T)(T value) @nogc nothrow pure @safe
 if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
 {
-    if (value < rlp.EMPTY_STRING_CODE)
-    {
-        return 1;
-    }
-    else
-    {
-        return 1 + T.sizeof - (value.ctlz!true() / 8);
-    }
+    return value < rlp.EMPTY_STRING_CODE
+        ? 1
+        : 1 + T.sizeof - (value.ctlz!true() / 8);
 }
 
 @("rlp encode - unsinged integers")
@@ -172,9 +167,15 @@ void encode(BigInt value, ref ubyte[] buffer) pure @safe
     foreach_reverse (i; 0 .. value.ulongLength() - 1)
     {
         d = value.getDigit(i);
-        buffer ~= cast(ubyte[]) [
-            (d >> 56) & 0xFF, (d >> 48) & 0xFF, (d >> 40) & 0xFF, (d >> 32) & 0xFF,
-            (d >> 24) & 0xFF, (d >> 16) & 0xFF, (d >>  8) & 0xFF,  d        & 0xFF
+        buffer ~= [
+            ubyte((d >> 56) & 0xFF),
+            ubyte((d >> 48) & 0xFF),
+            ubyte((d >> 40) & 0xFF),
+            ubyte((d >> 32) & 0xFF),
+            ubyte((d >> 24) & 0xFF),
+            ubyte((d >> 16) & 0xFF),
+            ubyte((d >>  8) & 0xFF),
+            ubyte( d        & 0xFF)
         ];
     }
 }

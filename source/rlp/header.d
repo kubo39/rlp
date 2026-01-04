@@ -3,6 +3,7 @@ module rlp.header;
 private import std.bitmanip : read, write;
 private import std.exception : enforce;
 private import std.range : empty, popFrontExactly;
+private import std.system : Endian;
 
 private import rlp : ctlz;
 import rlp.exception;
@@ -27,15 +28,12 @@ void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
     }
     else
     {
-        import std.system : Endian;
-
         ubyte[size_t.sizeof] be;
-        size_t index = 0;
-        be[].write!(size_t, Endian.bigEndian)(header.payloadLen, &index);
-        size_t len = index - (header.payloadLen.ctlz!true() / 8);
+        be[].write!(size_t, Endian.bigEndian)(header.payloadLen, 0);
+        size_t len = size_t.sizeof - (header.payloadLen.ctlz!true() / 8);
         const code = header.isList ? 0xF7 : 0xB7;
         buffer ~= cast(ubyte) (code + len);
-        buffer ~= be[(header.payloadLen.ctlz!true() / 8) .. index];
+        buffer ~= be[($ - len) .. $];
     }
 }
 
@@ -65,7 +63,7 @@ void decodeHeader(ref Header header, ref const(ubyte)[] input) @trusted
         // copy payloadLen to buffer.
         assert(lenOfPayloadLen <= input.length);
         buffer[($ - lenOfPayloadLen) .. $] = input[0 .. lenOfPayloadLen];
-        header.payloadLen = cast(size_t) buffer.read!ulong;
+        header.payloadLen = cast(size_t) buffer.read!(ulong, Endian.bigEndian);
         assert(buffer.empty);
         break;
     case 0xC0: .. case 0xF7:
