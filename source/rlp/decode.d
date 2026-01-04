@@ -26,7 +26,7 @@ template isRlpDecodable(T)
 }
 
 /// Decode a value.
-T decode(T)(ref const(ubyte)[] input) @trusted
+T decode(T)(ref const(ubyte)[] input) @safe
     if (isRlpDecodable!T)
 {
     static if (is(T == bool))
@@ -64,13 +64,14 @@ T decode(T)(ref const(ubyte)[] input) @trusted
     }
     else static if (is(T == string))
     {
+        import std.string : assumeUTF;
         Header header = {
             isList: false,
             payloadLen: 0,
         };
         decodeHeader(header, input);
         enforce!UnexpectedList(!header.isList, "Expected string, got a list instead.");
-        return cast(T) input[0 ..  header.payloadLen];
+        return input[0 ..  header.payloadLen].assumeUTF();
     }
     else static if (is(T == ubyte[]))
     {
