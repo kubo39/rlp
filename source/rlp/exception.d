@@ -25,3 +25,9 @@ class UnexpectedList : Exception
 {
     mixin basicExceptionCtors;
 }
+
+///
+class NegativeBigIntException : Exception
+{
+    mixin basicExceptionCtors;
+}
