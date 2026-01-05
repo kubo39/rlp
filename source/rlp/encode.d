@@ -159,7 +159,7 @@ void encode(BigInt value, ref ubyte[] buffer) pure @safe
     }
 }
 
-size_t encodeLength(BigInt value) pure @safe
+size_t encodeLength(BigInt value) @nogc pure @safe
 {
     enforce!NegativeBigIntException(value >= 0, "value must be larger than zero.");
     if (value.ulongLength == 1)
@@ -282,7 +282,7 @@ void encode(T : U[], U)(T values, ref ubyte[] buffer) pure @safe
         value.encode(buffer);
 }
 
-size_t encodeLength(T : U[], U)(T values) pure @safe
+size_t encodeLength(T : U[], U)(T values) @nogc pure @safe
     if (!is(Unqual!U == ubyte))
 {
     auto payloadLen = rlpListHeader(values).payloadLen;
@@ -296,7 +296,7 @@ size_t lengthOfPayloadLength(size_t payloadLen) @nogc pure @safe
         : 1 + size_t.sizeof - (payloadLen.ctlz!true() / 8);
 }
 
-Header rlpListHeader(T : U[], U)(T values) pure @safe
+Header rlpListHeader(T : U[], U)(T values) @nogc pure @safe
 {
     Header h = { isList: true, payloadLen: 0 };
     foreach (v; values)
