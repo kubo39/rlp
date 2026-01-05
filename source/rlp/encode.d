@@ -34,7 +34,7 @@ ubyte[] encode(T)(T value) pure @safe
     if (isRlpEncodable!T)
 {
     ubyte[] buffer;
-    buffer.reserve(T.sizeof);
+    buffer.reserve(encodeLength(value));
     value.encode(buffer);
     return buffer;
 }
@@ -149,13 +149,11 @@ void encode(BigInt value, ref ubyte[] buffer) pure @safe
     Header h = { isList: false, payloadLen: payloadLen };
     h.encodeHeader(buffer);
     // first digit.
-    buffer.length += idx;
-    buffer[($ - idx) .. $] = nativeToBigEndian(digit)[($ - idx) .. $];
+    buffer ~= nativeToBigEndian(digit)[($ - idx) .. $];
     // rest.
     foreach_reverse (i; 0 .. value.ulongLength() - 1)
     {
-        buffer.length += ulong.sizeof;
-        buffer[($ - ulong.sizeof) .. $] = nativeToBigEndian(value.getDigit(i));
+        buffer ~= nativeToBigEndian(value.getDigit(i));
     }
 }
 
