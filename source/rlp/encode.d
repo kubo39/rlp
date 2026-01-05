@@ -149,11 +149,13 @@ void encode(BigInt value, ref ubyte[] buffer) pure @safe
     Header h = { isList: false, payloadLen: payloadLen };
     h.encodeHeader(buffer);
     // first digit.
-    buffer ~= nativeToBigEndian(digit)[($ - idx) .. $];
+    buffer.length += idx;
+    buffer[($ - idx) .. $] = nativeToBigEndian(digit)[($ - idx) .. $];
     // rest.
     foreach_reverse (i; 0 .. value.ulongLength() - 1)
     {
-        buffer ~= nativeToBigEndian(value.getDigit(i));
+        buffer.length += ulong.sizeof;
+        buffer[($ - ulong.sizeof) .. $] = nativeToBigEndian(value.getDigit(i));
     }
 }
 

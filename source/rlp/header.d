@@ -31,7 +31,8 @@ void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
         size_t len = size_t.sizeof - (header.payloadLen.ctlz!true() / 8);
         const code = header.isList ? 0xF7 : 0xB7;
         buffer ~= cast(ubyte) (code + len);
-        buffer ~= nativeToBigEndian(header.payloadLen)[($ - len) .. $];
+        buffer.length += len;
+        buffer[($ - len) .. $] = nativeToBigEndian(header.payloadLen)[($ - len) .. $];
     }
 }
 
