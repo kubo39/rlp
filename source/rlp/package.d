@@ -17,11 +17,13 @@ package size_t ctlz(bool isZeroUndef = false, T)(T value) @nogc nothrow pure @sa
 {
     version(LDC)
     {
+        pragma(LDC_allow_inline);
         import ldc.intrinsics : llvm_ctlz;
         return llvm_ctlz(value, isZeroUndef);
     }
     else
     {
+        pragma(inline, true);
         import core.bitop : bsr;
         if (value == 0)
             return T.sizeof * 8;
