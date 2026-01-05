@@ -1,5 +1,7 @@
 module rlp;
 
+private import std.traits : Unqual;
+
 public import rlp.decode;
 public import rlp.encode;
 public import rlp.exception;
@@ -10,7 +12,8 @@ package enum ubyte EMPTY_LIST_CODE = 0xC0;
 
 
 package size_t ctlz(bool isZeroUndef = false, T)(T value) @nogc nothrow pure @safe
-    if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong) || is(T == size_t))
+    if (is(Unqual!T == ubyte) || is(Unqual!T == ushort) || is(Unqual!T == uint) ||
+        is(Unqual!T == ulong) || is(Unqual!T == size_t))
 {
     version(LDC)
     {
