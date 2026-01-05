@@ -1,6 +1,6 @@
 module rlp.header;
 
-private import std.bitmanip : read, write;
+private import std.bitmanip : nativeToBigEndian, read;
 private import std.exception : enforce;
 private import std.range : empty, popFrontExactly;
 private import std.system : Endian;
@@ -28,12 +28,10 @@ void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
     }
     else
     {
-        ubyte[size_t.sizeof] be;
-        be[].write!(size_t, Endian.bigEndian)(header.payloadLen, 0);
         size_t len = size_t.sizeof - (header.payloadLen.ctlz!true() / 8);
         const code = header.isList ? 0xF7 : 0xB7;
         buffer ~= cast(ubyte) (code + len);
-        buffer ~= be[($ - len) .. $];
+        buffer ~= nativeToBigEndian(header.payloadLen)[($ - len) .. $];
     }
 }
 
