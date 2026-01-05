@@ -185,16 +185,15 @@ size_t encodeLength(BigInt value) pure @safe
     enforce!NegativeBigIntException(value >= 0, "value must be larger than zero.");
     if (value.ulongLength == 1)
         return encodeLength(cast(ulong) value);
-    // FIXME(kubo39): optimize.
-    ubyte[] buffer;
-    encode(value, buffer);
-    return buffer.length;
+    immutable ulong digit = value.getDigit(value.ulongLength() - 1);
+    return 1 + ulong.sizeof - (digit.ctlz!true() / 8) + (value.ulongLength() - 1) * 8;
 }
 
 @("rlp encode - BigInt")
 pure @safe unittest
 {
     import std.digest : toHexString;
+    import std.exception : assertThrown;
 
     assert(encode(BigInt("0")).toHexString == "80");
     assert(encode(BigInt("1")).toHexString == "01");
@@ -220,6 +219,8 @@ pure @safe unittest
 		encode(BigInt("0x10000000000000000000000000000000000000000000000000000000000000000"))
             .toHexString == "A1010000000000000000000000000000000000000000000000000000000000000000"
     );
+
+    assertThrown!NegativeBigIntException(encode(BigInt("-1")));
 }
 
 void encode(bool asList = false, T)(T[] value, ref ubyte[] buffer) nothrow pure @safe
@@ -332,6 +333,8 @@ pure @safe unittest
     assert(encode(new ulong[0]).toHexString == "C0");
     assert(encode!true([ubyte(0x0)]).toHexString == "C180");
     assert(encode([BigInt("0")]).toHexString == "C180");
+    const ubyte[] magnitude = [1, 0, 0, 0, 0, 0, 0, 0, 0];
+    assert(encode([BigInt(false, magnitude)]).toHexString == "CA89010000000000000000");
     assert(encode([0xFFCCB5UL, 0xFFC0B5UL]).toHexString == "C883FFCCB583FFC0B5");
 }
 
