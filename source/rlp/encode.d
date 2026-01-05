@@ -1,6 +1,7 @@
 module rlp.encode;
 
 import std.bigint : BigInt;
+private import std.bitmanip : nativeToBigEndian;
 private import std.exception : enforce;
 private import std.traits : Unqual;
 
@@ -81,15 +82,10 @@ if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
     }
     else
     {
-        import std.bitmanip : write;
-        import std.system : Endian;
-
         size_t len = T.sizeof - (value.ctlz!true() / 8);
         buffer ~= cast(ubyte) (rlp.EMPTY_STRING_CODE + len);
-
-        ubyte[T.sizeof] be;
-        be[].write!(T, Endian.bigEndian)(value, 0);
-        buffer ~= be[($ - len) .. $];
+        buffer.length += len;
+        buffer[($ - len) .. $] = nativeToBigEndian(value)[($ - len) .. $];
     }
 }
 
@@ -147,36 +143,19 @@ void encode(BigInt value, ref ubyte[] buffer) pure @safe
         return;
     }
     // encode as bytes.
-    ulong d = value.getDigit(value.ulongLength() - 1);
-    immutable idx = ulong.sizeof - (d.ctlz!true() / 8);
+    immutable ulong digit = value.getDigit(value.ulongLength() - 1);
+    immutable idx = ulong.sizeof - (digit.ctlz!true() / 8);
     immutable payloadLen = idx + (value.ulongLength() - 1) * 8;
     Header h = { isList: false, payloadLen: payloadLen };
     h.encodeHeader(buffer);
     // first digit.
-    buffer ~= [
-        ubyte((d >> 56) & 0xFF),
-        ubyte((d >> 48) & 0xFF),
-        ubyte((d >> 40) & 0xFF),
-        ubyte((d >> 32) & 0xFF),
-        ubyte((d >> 24) & 0xFF),
-        ubyte((d >> 16) & 0xFF),
-        ubyte((d >>  8) & 0xFF),
-        ubyte( d        & 0xFF)
-    ][($ - idx) .. $];
+    buffer.length += idx;
+    buffer[($ - idx) .. $] = nativeToBigEndian(digit)[($ - idx) .. $];
     // rest.
     foreach_reverse (i; 0 .. value.ulongLength() - 1)
     {
-        d = value.getDigit(i);
-        buffer ~= [
-            ubyte((d >> 56) & 0xFF),
-            ubyte((d >> 48) & 0xFF),
-            ubyte((d >> 40) & 0xFF),
-            ubyte((d >> 32) & 0xFF),
-            ubyte((d >> 24) & 0xFF),
-            ubyte((d >> 16) & 0xFF),
-            ubyte((d >>  8) & 0xFF),
-            ubyte( d        & 0xFF)
-        ];
+        buffer.length += ulong.sizeof;
+        buffer[($ - ulong.sizeof) .. $] = nativeToBigEndian(value.getDigit(i));
     }
 }
 
