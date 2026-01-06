@@ -4,6 +4,7 @@ import std.bigint : BigInt;
 private import std.bitmanip : nativeToBigEndian;
 private import std.exception : enforce;
 private import std.traits : Unqual;
+import std.typecons : Nullable;
 
 private import rlp : ctlz;
 import rlp.exception : NegativeBigIntException;
@@ -16,15 +17,12 @@ template isRlpEncodable(T)
         is(T == bool) || is(T == ubyte) || is(T == ushort) || is(T == uint) ||
         is(T == ulong) || is(T == string) || is(T == BigInt)
     )
-    {
         enum isRlpEncodable = true;
-    }
     else static if (is(T : U[], U))
-    {
         enum isRlpEncodable = isRlpEncodable!U;
-    }
-    else static if (is(T == struct) && __traits(isPOD, T))
-    {
+    else static if (is(T == Nullable!U, U))
+        enum isRlpEncodable = isRlpEncodable!U;
+    else static if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
         enum isRlpEncodable = {
             static foreach (member; __traits(allMembers, T))
             {
@@ -33,11 +31,8 @@ template isRlpEncodable(T)
             }
             return true;
         } ();
-    }
     else
-    {
         enum isRlpEncodable = false;
-    }
 }
 
 /// Encode a value.
@@ -51,11 +46,11 @@ ubyte[] encode(T)(T value) pure @safe
 }
 
 /// Ditto.
-ubyte[] encode(bool isList = false)(ubyte[] value) pure @safe
+ubyte[] encode(bool asList = false)(ubyte[] value) pure @safe
 {
     ubyte[] buffer;
     buffer.reserve(value.length);
-    value.encode!isList(buffer);
+    value.encode!asList(buffer);
     return buffer;
 }
 
@@ -84,13 +79,9 @@ void encode(T)(T value, ref ubyte[] buffer) nothrow pure @trusted
 if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
 {
     if (value == 0)
-    {
         buffer ~= rlp.EMPTY_STRING_CODE;
-    }
     else if (value < cast(T) rlp.EMPTY_STRING_CODE)
-    {
         buffer ~= cast(ubyte) value;
-    }
     else
     {
         size_t len = T.sizeof - (value.ctlz!true() / 8);
@@ -245,9 +236,7 @@ size_t encodeLength(bool asList = false, T)(T[] value) @nogc pure @safe
     {
         size_t len = value.length;
         if (len != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
-        {
             len += lengthOfPayloadLength(len);
-        }
         return len;
     }
 }
@@ -329,7 +318,7 @@ pure @safe unittest
 }
 
 void encode(T)(T value, ref ubyte[] buffer) pure @safe
-    if (is(T == struct) && __traits(isPOD, T))
+    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
 {
     rlpStructHeader(value).encodeHeader(buffer);
     // Fields are laid out in lexical order.
@@ -339,14 +328,14 @@ void encode(T)(T value, ref ubyte[] buffer) pure @safe
 }
 
 size_t encodeLength(T)(T values) pure @safe
-    if (is(T == struct) && __traits(isPOD, T))
+    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
 {
     auto payloadLen = rlpStructHeader(values).payloadLen;
     return payloadLen + lengthOfPayloadLength(payloadLen);
 }
 
 Header rlpStructHeader(T)(T value) pure @safe
-    if (is(T == struct) && __traits(isPOD, T))
+    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
 {
     // Encode structs as lists.
     Header h = { isList: true, payloadLen: 0 };
@@ -368,6 +357,43 @@ Header rlpStructHeader(T)(T value) pure @safe
     // Encoding a struct which has an int field must be compile error.
     struct IntStruct { int a; }
     static assert(!__traits(compiles, encode(IntStruct(1)).toHexString));
+}
+
+void encode(T)(T value ,ref ubyte[] buffer) pure @safe
+    if (is(T == Nullable!U, U))
+{
+    if (value.isNull)
+    {
+        // for byte sequence, and we cannot handle arrays of ubyte here.
+        static if (is(T == Nullable!(ubyte[])) || is(T == Nullable!string))
+            buffer ~= 0x80;
+        else static if (is(T : Nullable!(V[]), V))
+            buffer ~= 0xC0;
+        else
+            buffer ~= 0x80;
+    }
+    else
+        value.get.encode(buffer);
+}
+
+size_t encodeLength(T)(T value) pure @safe
+    if (is(T == Nullable!U, U))
+{
+    return value.isNull ? 1 : value.get.encodeLength();
+}
+
+@("rlp encode - Nullable")
+pure @trusted unittest
+{
+    import std.digest : toHexString;
+
+    assert(encode(Nullable!uint.init).toHexString == "80");
+    assert(encode(Nullable!string.init).toHexString == "80");
+    assert(encode(Nullable!(uint[]).init).toHexString == "C0");
+    assert(encode(Nullable!(string[]).init).toHexString == "C0");
+    struct NullableFields { Nullable!uint a; }
+    assert(encode(NullableFields()).toHexString == "C180");
+    assert(encode(NullableFields(Nullable!uint(1))).toHexString == "C101");
 }
 
 // tests from deth.
