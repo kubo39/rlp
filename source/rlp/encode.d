@@ -23,6 +23,17 @@ template isRlpEncodable(T)
     {
         enum isRlpEncodable = isRlpEncodable!U;
     }
+    else static if (is(T == struct) && __traits(isPOD, T))
+    {
+        enum isRlpEncodable = {
+            static foreach (member; __traits(allMembers, T))
+            {
+                static if (!isRlpEncodable!(typeof(member)))
+                    return false;
+            }
+            return true;
+        } ();
+    }
     else
     {
         enum isRlpEncodable = false;
@@ -315,6 +326,48 @@ pure @safe unittest
     const ubyte[] magnitude = [1, 0, 0, 0, 0, 0, 0, 0, 0];
     assert(encode([BigInt(false, magnitude)]).toHexString == "CA89010000000000000000");
     assert(encode([0xFFCCB5UL, 0xFFC0B5UL]).toHexString == "C883FFCCB583FFC0B5");
+}
+
+void encode(T)(T value, ref ubyte[] buffer) pure @safe
+    if (is(T == struct) && __traits(isPOD, T))
+{
+    rlpStructHeader(value).encodeHeader(buffer);
+    // Fields are laid out in lexical order.
+    // Spec: https://dlang.org/spec/struct.html#struct_layout
+    foreach (field; __traits(allMembers, T))
+        __traits(getMember, value, field).encode(buffer);
+}
+
+size_t encodeLength(T)(T values) pure @safe
+    if (is(T == struct) && __traits(isPOD, T))
+{
+    auto payloadLen = rlpStructHeader(values).payloadLen;
+    return payloadLen + lengthOfPayloadLength(payloadLen);
+}
+
+Header rlpStructHeader(T)(T value) pure @safe
+    if (is(T == struct) && __traits(isPOD, T))
+{
+    // Encode structs as lists.
+    Header h = { isList: true, payloadLen: 0 };
+    foreach (field; __traits(allMembers, T))
+        h.payloadLen += __traits(getMember, value, field).encodeLength();
+    return h;
+}
+
+@("rlp encode - struct")
+@safe unittest
+{
+    import std.digest : toHexString;
+
+    // ported from https://github.com/ethereum/go-ethereum/blob/b635e0632ce675be3d7cc0b498e08df8dc6346d6/rlp/encode_test.go#L296-L297
+    struct SimpleStruct { uint a; string b; }
+    assert(encode(SimpleStruct()).toHexString == "C28080");
+    assert(encode(SimpleStruct(3, "foo")).toHexString == "C50383666F6F");
+
+    // Encoding a struct which has an int field must be compile error.
+    struct IntStruct { int a; }
+    static assert(!__traits(compiles, encode(IntStruct(1)).toHexString));
 }
 
 // tests from deth.
