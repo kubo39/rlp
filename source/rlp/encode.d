@@ -28,7 +28,7 @@ template isRlpEncodable(T)
         enum isRlpEncodable = {
             static foreach (member; __traits(allMembers, T))
             {
-                static if (!isRlpEncodable!(typeof(member)))
+                static if (!isRlpEncodable!(typeof(__traits(getMember, T.init, member))))
                     return false;
             }
             return true;
