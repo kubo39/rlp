@@ -14,15 +14,16 @@ import rlp.header;
 template isRlpEncodable(T)
 {
     static if (
-        is(T == bool) || is(T == ubyte) || is(T == ushort) || is(T == uint) ||
-        is(T == ulong) || is(T == string) || is(T == BigInt)
+        is(Unqual!T == bool) || is(Unqual!T == ubyte) || is(Unqual!T == ushort) ||
+        is(Unqual!T == uint) || is(Unqual!T == ulong) || is(Unqual!T == string) ||
+        is(Unqual!T == BigInt)
     )
         enum isRlpEncodable = true;
     else static if (is(T : U[], U))
         enum isRlpEncodable = isRlpEncodable!U;
     else static if (is(T == Nullable!U, U))
         enum isRlpEncodable = isRlpEncodable!U;
-    else static if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
+    else static if (is(Unqual!T == struct) && __traits(isPOD, T) && !is(Unqual!T == Nullable!U, U))
         enum isRlpEncodable = {
             static foreach (member; __traits(allMembers, T))
             {
@@ -76,7 +77,10 @@ pure @safe unittest
 }
 
 void encode(T)(T value, ref ubyte[] buffer) nothrow pure @trusted
-if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
+if (
+    is(Unqual!T == ubyte) || is(Unqual!T == ushort) ||
+    is(Unqual!T == uint)  || is(Unqual!T == ulong)
+)
 {
     if (value == 0)
         buffer ~= rlp.EMPTY_STRING_CODE;
@@ -92,7 +96,10 @@ if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
 }
 
 size_t encodeLength(T)(T value) @nogc nothrow pure @safe
-if (is(T == ubyte) || is(T == ushort) || is(T == uint) || is(T == ulong))
+if (
+    is(Unqual!T == ubyte) || is(Unqual!T == ushort) ||
+    is(Unqual!T == uint)  || is(Unqual!T == ulong)
+)
 {
     return value < rlp.EMPTY_STRING_CODE
         ? 1
