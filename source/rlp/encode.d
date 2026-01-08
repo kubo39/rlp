@@ -55,27 +55,13 @@ ubyte[] encode(bool asList = false)(ubyte[] value) pure @safe
     return buffer;
 }
 
-private:
-
+/// Encode a value with consuming a buffer.
 void encode(bool value, ref ubyte[] buffer) nothrow pure @safe
 {
     buffer ~= value ? 1 : rlp.EMPTY_STRING_CODE;
 }
 
-size_t encodeLength(bool _) @nogc nothrow pure @safe
-{
-    return 1;
-}
-
-@("rlp encode - bool")
-pure @safe unittest
-{
-    import std.digest : toHexString;
-
-    assert(encode(true).toHexString == "01");
-    assert(encode(false).toHexString == "80");
-}
-
+/// Ditto.
 void encode(T)(T value, ref ubyte[] buffer) nothrow pure @trusted
 if (
     is(Unqual!T == ubyte) || is(Unqual!T == ushort) ||
@@ -95,6 +81,105 @@ if (
     }
 }
 
+/// Ditto.
+void encode(BigInt value, ref ubyte[] buffer) pure @safe
+{
+    enforce!NegativeBigIntException(value >= 0, "value must be larger than zero.");
+    if (value.ulongLength() == 1)
+    {
+        encode!ulong(cast(ulong) value, buffer);
+        return;
+    }
+    // encode as bytes.
+    immutable ulong digit = value.getDigit(value.ulongLength() - 1);
+    immutable idx = ulong.sizeof - (digit.ctlz!true() / 8);
+    immutable payloadLen = idx + (value.ulongLength() - 1) * 8;
+    Header h = { isList: false, payloadLen: payloadLen };
+    h.encodeHeader(buffer);
+    // first digit.
+    buffer.length += idx;
+    buffer[($ - idx) .. $] = nativeToBigEndian(digit)[($ - idx) .. $];
+    // rest.
+    foreach_reverse (i; 0 .. value.ulongLength() - 1)
+    {
+        buffer.length += ulong.sizeof;
+        buffer[($ - ulong.sizeof) .. $] = nativeToBigEndian(value.getDigit(i));
+    }
+}
+
+/// Ditto.
+void encode(bool asList = false, T)(T[] value, ref ubyte[] buffer) nothrow pure @safe
+    if (is(Unqual!T == ubyte))
+{
+    static if (asList)
+    {
+        rlpListHeader(value).encodeHeader(buffer);
+        foreach (elem; value)
+            elem.encode(buffer);
+    }
+    else
+    {
+        if (value.length != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
+        {
+            Header h = { isList: false, payloadLen: value.length };
+            h.encodeHeader(buffer);
+        }
+        buffer ~= value;
+    }
+}
+
+/// Ditto.
+void encode(string value, ref ubyte[] buffer) nothrow pure @trusted
+{
+    encode!false(cast(ubyte[]) value, buffer);
+}
+
+/// Ditto.
+void encode(T : U[], U)(T values, ref ubyte[] buffer) pure @safe
+    if (!is(Unqual!U == ubyte))
+{
+    rlpListHeader(values).encodeHeader(buffer);
+    foreach (value; values)
+        value.encode(buffer);
+}
+
+/// Ditto.
+void encode(T)(T value, ref ubyte[] buffer) pure @safe
+    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
+{
+    rlpStructHeader(value).encodeHeader(buffer);
+    // Fields are laid out in lexical order.
+    // Spec: https://dlang.org/spec/struct.html#struct_layout
+    foreach (field; __traits(allMembers, T))
+        __traits(getMember, value, field).encode(buffer);
+}
+
+/// Ditto.
+void encode(T)(T value ,ref ubyte[] buffer) pure @safe
+    if (is(T == Nullable!U, U))
+{
+    if (value.isNull)
+    {
+        // for byte sequence, and we cannot handle arrays of ubyte here.
+        static if (is(T == Nullable!(ubyte[])) || is(T == Nullable!string))
+            buffer ~= 0x80;
+        else static if (is(T : Nullable!(V[]), V))
+            buffer ~= 0xC0;
+        else
+            buffer ~= 0x80;
+    }
+    else
+        value.get.encode(buffer);
+}
+
+
+/// Returns of a length of a encoded value.
+size_t encodeLength(bool _) @nogc nothrow pure @safe
+{
+    return 1;
+}
+
+/// Ditto.
 size_t encodeLength(T)(T value) @nogc nothrow pure @safe
 if (
     is(Unqual!T == ubyte) || is(Unqual!T == ushort) ||
@@ -104,6 +189,100 @@ if (
     return value < rlp.EMPTY_STRING_CODE
         ? 1
         : 1 + T.sizeof - (value.ctlz!true() / 8);
+}
+
+/// Ditto.
+size_t encodeLength(BigInt value) pure @safe
+{
+    enforce!NegativeBigIntException(value >= 0, "value must be larger than zero.");
+    if (value.ulongLength == 1)
+        return encodeLength(cast(ulong) value);
+    immutable ulong digit = value.getDigit(value.ulongLength() - 1);
+    return 1 + ulong.sizeof - (digit.ctlz!true() / 8) + (value.ulongLength() - 1) * 8;
+}
+
+/// Ditto.
+size_t encodeLength(bool asList = false, T)(T[] value) @nogc pure @safe
+    if (is(Unqual!T == ubyte))
+{
+    static if (asList)
+    {
+        auto payloadLen = rlpListHeader(value).payloadLength;
+        return payloadLen + lengthOfPayloadLength(payloadLen);
+    }
+    else
+    {
+        size_t len = value.length;
+        if (len != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
+            len += lengthOfPayloadLength(len);
+        return len;
+    }
+}
+
+/// Ditto.
+size_t encodeLength(string value) @nogc pure @trusted
+{
+    return encodeLength!false(cast(ubyte[]) value);
+}
+
+/// Ditto.
+size_t encodeLength(T : U[], U)(T values) pure @safe
+    if (!is(Unqual!U == ubyte))
+{
+    auto payloadLen = rlpListHeader(values).payloadLen;
+    return payloadLen + lengthOfPayloadLength(payloadLen);
+}
+
+/// Ditto.
+size_t encodeLength(T)(T values) pure @safe
+    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
+{
+    auto payloadLen = rlpStructHeader(values).payloadLen;
+    return payloadLen + lengthOfPayloadLength(payloadLen);
+}
+
+/// Ditto.
+size_t encodeLength(T)(T value) pure @safe
+    if (is(T == Nullable!U, U))
+{
+    return value.isNull ? 1 : value.get.encodeLength();
+}
+
+private:
+
+size_t lengthOfPayloadLength(size_t payloadLen) @nogc pure @safe
+{
+    return payloadLen < 56
+        ? 1
+        : 1 + size_t.sizeof - (payloadLen.ctlz!true() / 8);
+}
+
+Header rlpListHeader(T : U[], U)(T values) pure @safe
+{
+    Header h = { isList: true, payloadLen: 0 };
+    foreach (v; values)
+        h.payloadLen += v.encodeLength();
+    return h;
+}
+
+Header rlpStructHeader(T)(T value) pure @safe
+    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
+{
+    // Encode structs as lists.
+    Header h = { isList: true, payloadLen: 0 };
+    foreach (field; __traits(allMembers, T))
+        h.payloadLen += __traits(getMember, value, field).encodeLength();
+    return h;
+}
+
+
+@("rlp encode - bool")
+pure @safe unittest
+{
+    import std.digest : toHexString;
+
+    assert(encode(true).toHexString == "01");
+    assert(encode(false).toHexString == "80");
 }
 
 @("rlp encode - unsinged integers")
@@ -143,40 +322,6 @@ pure @safe unittest
     assert(encode((ulong(0xFFCCB5DDFFEE1483))).toHexString == "88FFCCB5DDFFEE1483");
 }
 
-void encode(BigInt value, ref ubyte[] buffer) pure @safe
-{
-    enforce!NegativeBigIntException(value >= 0, "value must be larger than zero.");
-    if (value.ulongLength() == 1)
-    {
-        encode!ulong(cast(ulong) value, buffer);
-        return;
-    }
-    // encode as bytes.
-    immutable ulong digit = value.getDigit(value.ulongLength() - 1);
-    immutable idx = ulong.sizeof - (digit.ctlz!true() / 8);
-    immutable payloadLen = idx + (value.ulongLength() - 1) * 8;
-    Header h = { isList: false, payloadLen: payloadLen };
-    h.encodeHeader(buffer);
-    // first digit.
-    buffer.length += idx;
-    buffer[($ - idx) .. $] = nativeToBigEndian(digit)[($ - idx) .. $];
-    // rest.
-    foreach_reverse (i; 0 .. value.ulongLength() - 1)
-    {
-        buffer.length += ulong.sizeof;
-        buffer[($ - ulong.sizeof) .. $] = nativeToBigEndian(value.getDigit(i));
-    }
-}
-
-size_t encodeLength(BigInt value) pure @safe
-{
-    enforce!NegativeBigIntException(value >= 0, "value must be larger than zero.");
-    if (value.ulongLength == 1)
-        return encodeLength(cast(ulong) value);
-    immutable ulong digit = value.getDigit(value.ulongLength() - 1);
-    return 1 + ulong.sizeof - (digit.ctlz!true() / 8) + (value.ulongLength() - 1) * 8;
-}
-
 @("rlp encode - BigInt")
 pure @safe unittest
 {
@@ -211,43 +356,6 @@ pure @safe unittest
     assertThrown!NegativeBigIntException(encode(BigInt("-1")));
 }
 
-void encode(bool asList = false, T)(T[] value, ref ubyte[] buffer) nothrow pure @safe
-    if (is(Unqual!T == ubyte))
-{
-    static if (asList)
-    {
-        rlpListHeader(value).encodeHeader(buffer);
-        foreach (elem; value)
-            elem.encode(buffer);
-    }
-    else
-    {
-        if (value.length != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
-        {
-            Header h = { isList: false, payloadLen: value.length };
-            h.encodeHeader(buffer);
-        }
-        buffer ~= value;
-    }
-}
-
-size_t encodeLength(bool asList = false, T)(T[] value) @nogc pure @safe
-    if (is(Unqual!T == ubyte))
-{
-    static if (asList)
-    {
-        auto payloadLen = rlpListHeader(value).payloadLength;
-        return payloadLen + lengthOfPayloadLength(payloadLen);
-    }
-    else
-    {
-        size_t len = value.length;
-        if (len != 1 || value[0] >= rlp.EMPTY_STRING_CODE)
-            len += lengthOfPayloadLength(len);
-        return len;
-    }
-}
-
 @("rlp encode - bytes")
 @safe unittest
 {
@@ -260,17 +368,6 @@ size_t encodeLength(bool asList = false, T)(T[] value) @nogc pure @safe
     assert(encode([ubyte(0xAB), ubyte(0XBA)]).toHexString == "82ABBA");
 }
 
-
-void encode(string value, ref ubyte[] buffer) nothrow pure @trusted
-{
-    encode!false(cast(ubyte[]) value, buffer);
-}
-
-size_t encodeLength(string value) @nogc pure @trusted
-{
-    return encodeLength!false(cast(ubyte[]) value);
-}
-
 @("rlp encode - string")
 pure @safe unittest
 {
@@ -279,36 +376,6 @@ pure @safe unittest
     assert(encode("").toHexString == "80");
     assert(encode("{").toHexString == "7B");
     assert(encode("test str").toHexString == "887465737420737472");
-}
-
-void encode(T : U[], U)(T values, ref ubyte[] buffer) pure @safe
-    if (!is(Unqual!U == ubyte))
-{
-    rlpListHeader(values).encodeHeader(buffer);
-    foreach (value; values)
-        value.encode(buffer);
-}
-
-size_t encodeLength(T : U[], U)(T values) pure @safe
-    if (!is(Unqual!U == ubyte))
-{
-    auto payloadLen = rlpListHeader(values).payloadLen;
-    return payloadLen + lengthOfPayloadLength(payloadLen);
-}
-
-size_t lengthOfPayloadLength(size_t payloadLen) @nogc pure @safe
-{
-    return payloadLen < 56
-        ? 1
-        : 1 + size_t.sizeof - (payloadLen.ctlz!true() / 8);
-}
-
-Header rlpListHeader(T : U[], U)(T values) pure @safe
-{
-    Header h = { isList: true, payloadLen: 0 };
-    foreach (v; values)
-        h.payloadLen += v.encodeLength();
-    return h;
 }
 
 @("rlp encode - list")
@@ -324,33 +391,6 @@ pure @safe unittest
     assert(encode([0xFFCCB5UL, 0xFFC0B5UL]).toHexString == "C883FFCCB583FFC0B5");
 }
 
-void encode(T)(T value, ref ubyte[] buffer) pure @safe
-    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
-{
-    rlpStructHeader(value).encodeHeader(buffer);
-    // Fields are laid out in lexical order.
-    // Spec: https://dlang.org/spec/struct.html#struct_layout
-    foreach (field; __traits(allMembers, T))
-        __traits(getMember, value, field).encode(buffer);
-}
-
-size_t encodeLength(T)(T values) pure @safe
-    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
-{
-    auto payloadLen = rlpStructHeader(values).payloadLen;
-    return payloadLen + lengthOfPayloadLength(payloadLen);
-}
-
-Header rlpStructHeader(T)(T value) pure @safe
-    if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
-{
-    // Encode structs as lists.
-    Header h = { isList: true, payloadLen: 0 };
-    foreach (field; __traits(allMembers, T))
-        h.payloadLen += __traits(getMember, value, field).encodeLength();
-    return h;
-}
-
 @("rlp encode - struct")
 @safe unittest
 {
@@ -364,29 +404,6 @@ Header rlpStructHeader(T)(T value) pure @safe
     // Encoding a struct which has an int field must be compile error.
     struct IntStruct { int a; }
     static assert(!__traits(compiles, encode(IntStruct(1)).toHexString));
-}
-
-void encode(T)(T value ,ref ubyte[] buffer) pure @safe
-    if (is(T == Nullable!U, U))
-{
-    if (value.isNull)
-    {
-        // for byte sequence, and we cannot handle arrays of ubyte here.
-        static if (is(T == Nullable!(ubyte[])) || is(T == Nullable!string))
-            buffer ~= 0x80;
-        else static if (is(T : Nullable!(V[]), V))
-            buffer ~= 0xC0;
-        else
-            buffer ~= 0x80;
-    }
-    else
-        value.get.encode(buffer);
-}
-
-size_t encodeLength(T)(T value) pure @safe
-    if (is(T == Nullable!U, U))
-{
-    return value.isNull ? 1 : value.get.encodeLength();
 }
 
 @("rlp encode - Nullable")
