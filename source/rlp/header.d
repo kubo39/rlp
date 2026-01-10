@@ -17,8 +17,7 @@ struct Header
     size_t payloadLen;
 }
 
-package:
-
+/// Encode a header.
 void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
 {
     if (header.payloadLen < 56)
@@ -36,6 +35,7 @@ void encodeHeader(Header header, ref ubyte[] buffer) pure nothrow @trusted
     }
 }
 
+/// Decode a header.
 void decodeHeader(ref Header header, ref const(ubyte)[] input) @trusted
 {
     enforce!InputIsNull(input.length > 0, "RLP header size is zero.");

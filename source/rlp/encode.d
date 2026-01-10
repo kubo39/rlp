@@ -248,8 +248,7 @@ size_t encodeLength(T)(T value) pure @safe
     return value.isNull ? 1 : value.get.encodeLength();
 }
 
-private:
-
+/// Calculate the length of payload length.
 size_t lengthOfPayloadLength(size_t payloadLen) @nogc pure @safe
 {
     return payloadLen < 56
@@ -257,6 +256,7 @@ size_t lengthOfPayloadLength(size_t payloadLen) @nogc pure @safe
         : 1 + size_t.sizeof - (payloadLen.ctlz!true() / 8);
 }
 
+/// Create a header for a list.
 Header rlpListHeader(T : U[], U)(T values) pure @safe
 {
     Header h = { isList: true, payloadLen: 0 };
@@ -265,6 +265,7 @@ Header rlpListHeader(T : U[], U)(T values) pure @safe
     return h;
 }
 
+/// Create a header for a struct.
 Header rlpStructHeader(T)(T value) pure @safe
     if (is(T == struct) && __traits(isPOD, T) && !is(T == Nullable!U, U))
 {
@@ -275,6 +276,7 @@ Header rlpStructHeader(T)(T value) pure @safe
     return h;
 }
 
+private:
 
 @("rlp encode - bool")
 pure @safe unittest
