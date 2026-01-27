@@ -1,5 +1,6 @@
 module rlp.decode;
 
+import std.bigint : BigInt;
 private import std.bitmanip : read;
 private import std.exception : enforce;
 private import std.range : empty, popFront, popFrontExactly;
@@ -12,7 +13,8 @@ private import rlp.exception;
 template isRlpDecodable(T)
 {
     static if (is(T == bool) || is(T == ubyte) || is(T == ushort) ||
-        is(T == uint) || is(T == ulong) || is(T == string))
+        is(T == uint) || is(T == ulong) || is(T == string) ||
+        is(T == BigInt))
     {
         enum isRlpDecodable = true;
     }
@@ -65,6 +67,19 @@ T decode(T)(ref const(ubyte)[] input) @safe
         input.popFrontExactly(header.payloadLen);
         return n;
     }
+    else static if (is(T == BigInt))
+    {
+        Header header = {
+            isList: false,
+            payloadLen: 0,
+        };
+        decodeHeader(header, input);
+        enforce!UnexpectedList(!header.isList, "Expected BigInt, got a list instead.");
+
+        auto result = BigInt(false, input[0 .. header.payloadLen]);
+        input.popFrontExactly(header.payloadLen);
+        return result;
+    }
     else static if (is(T == string))
     {
         import std.string : assumeUTF;
@@ -92,7 +107,7 @@ T decode(T)(ref const(ubyte)[] input) @safe
     }
     else static if (is(T U == U[]))
     {
-        static if (is(U == ushort) || is(U == uint) || is(U == ulong) || is(U == string))
+        static if (is(U == ushort) || is(U == uint) || is(U == ulong) || is(U == string) || is(U == BigInt))
         {
             Header header = {
                 isList: true,
@@ -276,6 +291,54 @@ version(unittest)
         {
             import std.exception : assertThrown;
             assertThrown(decode!(ulong[])(tc.input));
+        }
+    }
+}
+
+@("rlp decode - BigInt")
+@safe unittest
+{
+    foreach (tc; [
+        TestCase!BigInt([0x80], BigInt(0)),
+        TestCase!BigInt([0x01], BigInt(1)),
+        TestCase!BigInt([0x7F], BigInt(0x7F)),
+        TestCase!BigInt([0x81, 0x80], BigInt(0x80)),
+        TestCase!BigInt([0x82, 0x04, 0x00], BigInt(0x400)),
+        TestCase!BigInt([0x83, 0xFF, 0xCC, 0xB5], BigInt(0xFFCCB5)),
+        TestCase!BigInt([0xC0], BigInt(0), true),
+    ])
+    {
+        if (!tc.isError)
+            assert(decode!BigInt(tc.input) == tc.expected);
+        else
+        {
+            import std.exception : assertThrown;
+            assertThrown!UnexpectedList(decode!BigInt(tc.input));
+        }
+    }
+}
+
+@("rlp decode - BigInt[]")
+@safe unittest
+{
+    foreach (tc; [
+        TestCase!(BigInt[])([0xC0], []),
+        TestCase!(BigInt[])([0xC1, 0x80], [BigInt(0)]),
+        TestCase!(BigInt[])([0xC2, 0x01, 0x02], [BigInt(1), BigInt(2)]),
+        TestCase!(BigInt[])(
+            [0xC8,
+             0x83, 0xFF, 0xCC, 0xB5,
+             0x83, 0xFF, 0xC0, 0xB5
+            ], [BigInt(0xFFCCB5), BigInt(0xFFC0B5)]),
+        TestCase!(BigInt[])([0xD7], [], true),
+    ])
+    {
+        if (!tc.isError)
+            assert(decode!(BigInt[])(tc.input) == tc.expected);
+        else
+        {
+            import std.exception : assertThrown;
+            assertThrown(decode!(BigInt[])(tc.input));
         }
     }
 }
