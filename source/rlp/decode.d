@@ -359,9 +359,9 @@ version(unittest)
         string s;
         foreach (i; 0 .. n)
             s ~= cast(char) ('a' + (i % 26));
-        auto enc = encode(s);
+        const enc = encode(s);
         const(ubyte)[] input = enc;
-        auto decoded = decode!string(input);
+        const decoded = decode!string(input);
         assert(decoded == s);
         assert(input.length == 0, "the whole input must be consumed");
     }
@@ -387,10 +387,10 @@ version(unittest)
         ulong[] values;
         foreach (i; 0 .. 20)
             values ~= 0xFFCCB5UL + i;
-        auto enc = encode(values);
+        const enc = encode(values);
         assert(enc[0] >= 0xF8, "expected a long-form list header");
         const(ubyte)[] input = enc;
-        auto decoded = decode!(ulong[])(input);
+        const decoded = decode!(ulong[])(input);
         assert(decoded == values);
         assert(input.length == 0);
     }
