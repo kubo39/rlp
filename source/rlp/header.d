@@ -59,7 +59,7 @@ void decodeHeader(ref Header header, ref const(ubyte)[] input) @trusted
 
         auto buffer = new ubyte[size_t.sizeof];
         // copy payloadLen to buffer.
-        assert(lenOfPayloadLen <= input.length);
+        enforce!InputTooShort(lenOfPayloadLen <= input.length, "Too short to read payload length.");
         buffer[($ - lenOfPayloadLen) .. $] = input[0 .. lenOfPayloadLen];
         header.payloadLen = cast(size_t) buffer.read!(ulong, Endian.bigEndian);
         assert(buffer.empty);

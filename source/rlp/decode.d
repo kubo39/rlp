@@ -55,7 +55,8 @@ T decode(T)(ref const(ubyte)[] input) @safe
         };
         decodeHeader(header, input);
         enforce!UnexpectedList(!header.isList, "Expected " ~T.stringof ~ " got a list instead.");
-        assert(header.payloadLen <= T.sizeof);
+        enforce!InvalidInput(header.payloadLen <= T.sizeof,
+            "Payload too large for " ~ T.stringof ~ ".");
 
         if (header.payloadLen == 0)
             return 0;
@@ -393,5 +394,37 @@ version(unittest)
         const decoded = decode!(ulong[])(input);
         assert(decoded == values);
         assert(input.length == 0);
+    }
+}
+
+@("rlp decode - malformed input is rejected, even with -release")
+@safe unittest
+{
+    import std.exception : assertThrown;
+
+    // These guard against malformed/crafted input. They must be enforce(),
+    // not assert(), so the checks survive a -release build instead of turning
+    // into out-of-bounds reads.
+
+    // long-form header claims more length bytes than the input has.
+    {
+        const(ubyte)[] input = [cast(ubyte) 0xBF];  // wants 8 length bytes, none follow
+        assertThrown!InputTooShort(decode!string(input));
+    }
+
+    // integer payload larger than the target type.
+    {
+        // 0x89 => byte string of 9 bytes, which does not fit in a ulong (8).
+        const(ubyte)[] input = [
+            cast(ubyte) 0x89,
+            1, 2, 3, 4, 5, 6, 7, 8, 9
+        ];
+        assertThrown!InvalidInput(decode!ulong(input));
+    }
+
+    // a list where an integer is expected.
+    {
+        const(ubyte)[] input = [cast(ubyte) 0xC1, 0x01];  // a list, not an integer
+        assertThrown!UnexpectedList(decode!ulong(input));
     }
 }
