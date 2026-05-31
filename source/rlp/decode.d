@@ -118,14 +118,17 @@ T decode(T)(ref const(ubyte)[] input) @safe
             decodeHeader(header, input);
             enforce!UnexpectedString(header.isList, "Expected a list, got a byte string instead.");
 
-            if (input.length == 0)
-                return [];
+            // Only the list payload belongs to this list; consume exactly that
+            // much from input and decode elements within those bytes. Reading
+            // until input is empty would swallow trailing data and break nested
+            // lists.
+            auto payload = input[0 .. header.payloadLen];
+            input.popFrontExactly(header.payloadLen);
 
             T answer;
-
-            while (input.length)
+            while (payload.length)
             {
-                U elem = decode!U(input);
+                U elem = decode!U(payload);
                 answer ~= elem;
             }
             return answer;
@@ -426,5 +429,33 @@ version(unittest)
     {
         const(ubyte)[] input = [cast(ubyte) 0xC1, 0x01];  // a list, not an integer
         assertThrown!UnexpectedList(decode!ulong(input));
+    }
+}
+
+@("rlp decode - list consumes only its own payload")
+@safe unittest
+{
+    // A list must consume exactly its payload, leaving any trailing bytes in
+    // the input. Reading until input is empty would swallow them.
+    {
+        // [0xC2, 0x01, 0x02] is the list [1, 2]; 0x03 is unrelated trailing data.
+        const(ubyte)[] input = [cast(ubyte) 0xC2, 0x01, 0x02, 0x03];
+        const decoded = decode!(ulong[])(input);
+        assert(decoded == [1, 2]);
+        assert(input == [cast(ubyte) 0x03], "trailing byte must remain");
+    }
+
+    // Two lists concatenated: decode the first, the second stays in input.
+    {
+        const(ubyte)[] input = [
+            cast(ubyte) 0xC2, 0x01, 0x02,   // [1, 2]
+            cast(ubyte) 0xC1, 0x03          // [3]
+        ];
+        const first = decode!(ulong[])(input);
+        assert(first == [1, 2]);
+        assert(input == [cast(ubyte) 0xC1, 0x03]);
+        const second = decode!(ulong[])(input);
+        assert(second == [3]);
+        assert(input.length == 0);
     }
 }
