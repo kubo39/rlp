@@ -56,7 +56,6 @@ void decodeHeader(ref Header header, ref const(ubyte)[] input) @trusted
         header.isList = prefix >= 0xF8;
         const code = header.isList ? 0xF7 : 0xB7;
         const lenOfPayloadLen = prefix - code;
-        input.popFrontExactly(lenOfPayloadLen);
 
         auto buffer = new ubyte[size_t.sizeof];
         // copy payloadLen to buffer.
@@ -64,6 +63,8 @@ void decodeHeader(ref Header header, ref const(ubyte)[] input) @trusted
         buffer[($ - lenOfPayloadLen) .. $] = input[0 .. lenOfPayloadLen];
         header.payloadLen = cast(size_t) buffer.read!(ulong, Endian.bigEndian);
         assert(buffer.empty);
+        // consume the length bytes after reading them.
+        input.popFrontExactly(lenOfPayloadLen);
         break;
     case 0xC0: .. case 0xF7:
         input.read!ubyte;

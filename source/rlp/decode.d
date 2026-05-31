@@ -342,3 +342,56 @@ version(unittest)
         }
     }
 }
+
+@("rlp decode - long-form header (payload >= 56)")
+@safe unittest
+{
+    import rlp.encode : encode;
+
+    // Regression for the long-form header bug: payloads of 56 bytes or more
+    // use a long-form header (prefix 0xB8..0xBF / 0xF8..0xFF) whose length
+    // bytes must be read before being consumed. Short-form-only tests never
+    // exercised this path.
+
+    // string round-trip across the short/long boundary and beyond.
+    foreach (n; [55, 56, 57, 70, 300, 1000])
+    {
+        string s;
+        foreach (i; 0 .. n)
+            s ~= cast(char) ('a' + (i % 26));
+        auto enc = encode(s);
+        const(ubyte)[] input = enc;
+        auto decoded = decode!string(input);
+        assert(decoded == s);
+        assert(input.length == 0, "the whole input must be consumed");
+    }
+
+    // explicit byte-level check: "a" x 70 encodes to B8 46 [61 x70].
+    {
+        string s;
+        foreach (i; 0 .. 70)
+            s ~= "a";
+        auto enc = encode(s);
+        assert(enc[0] == 0xB8);
+        assert(enc[1] == 70);
+        const(ubyte)[] input = enc;
+        Header header;
+        decodeHeader(header, input);
+        assert(!header.isList);
+        assert(header.payloadLen == 70);
+        assert(input[0] == 0x61, "input must point at the payload, not the length byte");
+    }
+
+    // long list round-trip (prefix 0xF8..): a list whose payload >= 56 bytes.
+    {
+        ulong[] values;
+        foreach (i; 0 .. 20)
+            values ~= 0xFFCCB5UL + i;
+        auto enc = encode(values);
+        assert(enc[0] >= 0xF8, "expected a long-form list header");
+        const(ubyte)[] input = enc;
+        auto decoded = decode!(ulong[])(input);
+        assert(decoded == values);
+        assert(input.length == 0);
+    }
+}
