@@ -101,7 +101,7 @@ T decode(T)(ref const(ubyte)[] input) @safe
             payloadLen: 0,
         };
         decodeHeader(header, input);
-        assert(header.isList);
+        enforce!UnexpectedString(header.isList, "Expected a list, got a byte string instead.");
         auto ret = input[0 .. header.payloadLen].dup;
         input.popFrontExactly(header.payloadLen);
         return ret;
@@ -116,7 +116,7 @@ T decode(T)(ref const(ubyte)[] input) @safe
             };
 
             decodeHeader(header, input);
-            assert(header.isList);
+            enforce!UnexpectedString(header.isList, "Expected a list, got a byte string instead.");
 
             if (input.length == 0)
                 return [];

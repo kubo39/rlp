@@ -44,10 +44,12 @@ void decodeHeader(ref Header header, ref const(ubyte)[] input) @trusted
     switch (prefix)
     {
     case 0: .. case 0x7F:
+        header.isList = false;
         header.payloadLen = 1;
         break;
     case 0x80: .. case 0xB7:
         input.read!ubyte;
+        header.isList = false;
         header.payloadLen = prefix - 0x80;
         break;
     case 0xB8: .. case 0xBF:
